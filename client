@@ -1,0 +1,175 @@
+#include <iostream>
+#include <string>
+#include <WinSock2.h>
+#include <thread>
+#include <chrono>
+#include <ws2tcpip.h>
+
+
+#pragma comment(lib, "ws2_32.lib")
+
+
+
+
+int sendPublicKey(int dasSocket, std::string publicKeyString) {
+    int publicSend = send(dasSocket, publicKeyString.c_str(), publicKeyString.length(), 0);
+    if (publicSend < 0) {
+        std::cout << "Fehler beim senden des public Keys!\n";
+        return -1;
+    }
+}
+
+int recoverPublicKey(char* publicKeyBuffer, int dasSocket) {
+    int keyRecv = recv(dasSocket, publicKeyBuffer, 8192, 0);
+    if (keyRecv < 0) {
+        std::cout << "Fehler beim recovern des public Keys!\n";
+        return -1;
+    }
+
+    std::cout << "\n PUBLIC KEY (anderer Client): " << std::string(publicKeyBuffer, keyRecv) << "\n";
+}
+
+int recoverFunction(char* buffer, int dasSocket, char* publicKeyBuffer) {
+
+    while (true) {
+        int bekommenInBytes = recv(dasSocket, buffer, 4096, 0);
+        std::cout << "\nAnderer Client: " << std::string(buffer, bekommenInBytes) << "\n"; //printet die msg vom anderen client
+
+       /*   int keyRecv = recv(dasSocket, publicKeyBuffer, 8192, 0);
+        if (keyRecv < 0) {
+            std::cout << "Fehler beim recovern des public Keys!\n";
+        }*/
+
+        //std::cout << "\n Key (anderer Client): " << std::string(publicKeyBuffer, keyRecv) << "\n";
+        
+        
+        //std::this_thread::sleep_for(std::chrono::milliseconds(25));
+
+        
+        if (bekommenInBytes <= 0) {
+            std::cout << "fehler beim bekommen von daten. \n";
+            return -1;
+        }
+       
+        /* if (keyRecv < 0) {
+            std::cout << "Fehler beim recovern des public Keys!\n";
+            return -1;
+        }*/
+
+    }
+
+}
+
+int main()
+{
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cout << "Fehler bei der initialisierung von WinSock.\n";
+        return -1;
+    }
+
+    SOCKET dasSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (dasSocket < 0) {
+        std::cout << "Fehler beim Erstellen vom Socket\n";
+        return -1;
+    }
+
+    int port = 45000;
+    std::string ipAdresse = "127.0.0.1";
+
+    struct sockaddr_in andererClient {};
+    andererClient.sin_family = AF_INET;
+
+    if (inet_pton(AF_INET, ipAdresse.c_str(), &(andererClient.sin_addr.s_addr)) != 1) {
+        std::cout << "Fehler bei der Konvertierung der IP-Adresse.\n";
+        closesocket(dasSocket);
+        WSACleanup();
+        return -1;
+    }
+
+    andererClient.sin_port = htons(port);
+
+    int connectFunktion = connect(dasSocket, reinterpret_cast<sockaddr*>(&andererClient), sizeof(andererClient)); //C style cast (sockaddr*)&andererClient geht auch
+    if (connectFunktion < 0) {
+        std::cout << "fehler beim verbinden.\n";
+        return -1;
+    }
+    std::cout << "erfolgreich verbunden.\n";
+
+
+    //variables for message
+    char buffer[4096];
+    std::string nachricht;
+    
+    //variables for key
+    char publicKeyBuffer[8192];
+    int publicKey = 3323278;
+    std::string publicKeyString = std::to_string(publicKey);
+
+    //send pKey
+    sendPublicKey(dasSocket, publicKeyString);
+    
+
+    //recv pKey
+    recoverPublicKey(publicKeyBuffer, dasSocket);
+    std::cout << "\nPUBLIC KEY: " << publicKeyString << "\n";
+
+
+    //thread recv()
+    std::thread t(recoverFunction, buffer, dasSocket, publicKeyBuffer);
+    t.detach();
+
+
+
+
+    //pKey send() 
+    int publicSend = send(dasSocket, publicKeyString.c_str(), publicKeyString.length(), 0);
+    if (publicSend < 0) {
+        std::cout << "Fehler beim senden des public Keys!\n";
+        return -1;
+    }
+    
+
+    //get pKey from other client
+    int keyRecv = recv(dasSocket, publicKeyBuffer, 8192, 0);
+    if (keyRecv < 0) {
+        std::cout << "Fehler beim recovern des public Keys!\n";
+    }
+    
+   // std::cout << "\nPUBLIC KEY: " << publicKeyString << "\n";
+    std::cout << "\n PUBLIC KEY (anderer Client): " << std::string(publicKeyBuffer, keyRecv) << "\n";
+
+
+
+    // inf loop send
+    while (true) {
+
+
+        std::cout << "deine msg:  ";
+        std::getline(std::cin, nachricht);
+
+        if (nachricht == "/EXIT") {
+            break;
+        }
+
+
+       /*  int publicSend = send(dasSocket, publicKeyString.c_str(), publicKeyString.length(), 0);
+        if (publicSend < 0) {
+            std::cout << "Fehler beim senden des public Keys!\n";
+            return -1;
+        }*/
+
+        int schicken = send(dasSocket, nachricht.c_str(), nachricht.length(), 0);
+        if (schicken < 0) {
+            std::cout << "fehler beim versenden.\n";
+            return -1;
+        }
+    }
+
+    closesocket(dasSocket);
+    WSACleanup();
+    
+
+    return 0;
+
+}
