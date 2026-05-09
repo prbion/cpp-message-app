@@ -1,0 +1,109 @@
+#include <iostream>
+#include <string>
+#include <WinSock2.h>
+#include <thread>
+#include <chrono>
+
+
+#pragma comment(lib, "ws2_32.lib")
+
+void close_connection(SOCKET sock1, SOCKET sock2);
+
+void relay(SOCKET client1, SOCKET client2) {
+    char buffer[4096];
+    while (true) {
+        int recvInBytes = recv(client1, buffer, sizeof(buffer), 0);
+
+        if (recvInBytes > 0) {
+            send(client2, buffer, recvInBytes, 0);
+        }
+        else if (recvInBytes == 0) {
+            std::cout << "Client disconnected.\n";
+            break;
+        }
+        else {
+            std::cout << "Receive error.\n";
+            break;
+        }
+    }
+    close_connection(client1, client2);
+};
+
+void close_connection(SOCKET sock1, SOCKET sock2) {
+    if (sock1 != 0) {
+        closesocket(sock1);
+    }
+    if (sock2 != 0) {
+        closesocket(sock2);
+    }
+}
+
+int main() {
+
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cout << "Fehler bei der initialisierung von WinSock.\n";
+        return -1;
+    }
+
+    SOCKET server_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (server_socket < 0) {
+        std::cout << "Fehler beim Erstellen vom Socket\n";
+        return -1;
+    }
+
+    int port = 45000;
+    std::string serverIp = "127.0.0.1";
+
+
+    struct sockaddr_in server_address;
+    server_address.sin_family = AF_INET;
+    server_address.sin_addr.s_addr = INADDR_ANY;
+    server_address.sin_port = htons(port);
+
+
+
+    // to add: bind(), listen(), accept() ; threads: send(), recv()
+    int bindToSock = bind(server_socket, (sockaddr*)&server_address, sizeof(server_address));
+    if (bindToSock < 0) {
+        std::cout << "fehler beim binden. \n";
+    }
+    int listenToSock = listen(server_socket, 2);
+    if (listenToSock < 0) {
+        std::cout << "fehler bei listen. \n";
+    }
+
+    while (true) {
+        sockaddr_in clientAddr1{};
+        int addrSize1 = sizeof(clientAddr1);
+
+        SOCKET clientSocket1 = accept(server_socket, (sockaddr*)&clientAddr1, &addrSize1);
+        if (clientSocket1 < 0) {
+            std::cout << "Error accepting client 1.\n";
+            continue;
+        }
+        std::cout << "Client 1 connected.\n";
+
+        sockaddr_in clientAddr2{};
+        int addrSize2 = sizeof(clientAddr2);
+
+        SOCKET clientSocket2 = accept(server_socket, (sockaddr*)&clientAddr2, &addrSize2);
+        if (clientSocket2 < 0) {
+            std::cout << "Error accepting client 2. Closing Client 1 socket.\n";
+            closesocket(clientSocket1);
+            continue;
+        }
+        std::cout << "Client 2 connected.\n";
+
+
+        std::thread(relay, clientSocket1, clientSocket2).detach();
+        std::thread(relay, clientSocket2, clientSocket1).detach();
+
+
+    }
+
+    closesocket(server_socket);
+    WSACleanup();
+
+    return 0;
+}
